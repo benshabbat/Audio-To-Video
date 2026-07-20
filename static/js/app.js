@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const songName     = document.getElementById('songName');
   const apiKey       = document.getElementById('apiKey');
   const referenceImage = document.getElementById('referenceImage');
+  const enableSubtitles = document.getElementById('enableSubtitles');
   const uploadForm   = document.getElementById('uploadForm');
   const generateBtn  = document.getElementById('generateBtn');
   const formCard     = document.getElementById('formCard');
@@ -64,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (referenceImage.files[0]) {
       fd.append('reference_image', referenceImage.files[0]);
     }
+    fd.append('enable_subtitles', enableSubtitles.checked ? 'true' : 'false');
 
     try {
       const res  = await fetch('/generate', { method: 'POST', body: fd });
@@ -82,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     storyboard: '🎬 יוצר סטורי בורד עם Gemini...',
     clips:      '🎥 יוצר סצנות וידאו עם Veo 3.1... (עשוי לקחת כמה דקות לכל סצנה)',
     video:      '🎞️ מרכיב סרטון סופי...',
+    subtitles:  '💬 מטמיע כתוביות קריוקי...',
   };
 
   function pollStatus(jobId) {
@@ -139,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chosenFile.textContent = '';
     songName.value = '';
     referenceImage.value = '';
+    enableSubtitles.checked = true;
     if (pollTimer) clearInterval(pollTimer);
   }
 
