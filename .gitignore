@@ -12,3 +12,4 @@ venv/
 *.ogg
 *.flac
 *.m4a
+*.log

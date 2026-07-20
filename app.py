@@ -5,7 +5,7 @@ import threading
 from flask import Flask, render_template, request, send_file, jsonify
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
-from moviepy.editor import AudioFileClip, VideoFileClip
+from moviepy import AudioFileClip, VideoFileClip
 
 load_dotenv()
 
@@ -19,6 +19,7 @@ from video_generator import (
     assemble_scene_clips,
 )
 from subtitles import add_karaoke_subtitles
+from error_utils import safe_error
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB
@@ -34,6 +35,11 @@ REFERENCE_IMAGE_MIME = {
     "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp",
 }
 VEO_SCENE_TIMEOUT = 300  # seconds to wait for a single Veo clip before falling back
+
+# Audio-understanding cost scales with the audio's duration, not its byte
+# size — MAX_CONTENT_LENGTH alone doesn't stop a long, low-bitrate file from
+# triggering a very expensive Gemini File API analysis call.
+MAX_SONG_DURATION_SECONDS = int(os.getenv("MAX_SONG_DURATION_SECONDS", "600"))
 
 # Default scene colours (used for placeholder images when Imagen fails)
 _SCENE_COLORS = [
@@ -54,6 +60,12 @@ CLEANUP_INTERVAL_SECONDS = 30 * 60
 # Veo 3.1 calls are slow and metered — cap how many generation jobs can run
 # at the same time so a burst of uploads can't fan out into unbounded,
 # expensive concurrent Veo/Gemini requests.
+#
+# This cap (and the `jobs` store below) is process-local in-memory state, so
+# it only holds if this app runs as a single process. Deploying behind
+# multiple worker processes (e.g. `gunicorn -w N`) gives each worker its own
+# copy, silently raising the real limit to MAX_CONCURRENT_JOBS * N — run with
+# a single worker, or move this to shared external state first.
 MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
 
 # In-memory job store  {job_id: {status, message, error, output_path, progress, created_at}}
@@ -124,6 +136,12 @@ def _run_generation(
             song_duration = audio_probe.duration
             audio_probe.close()
 
+            if song_duration > MAX_SONG_DURATION_SECONDS:
+                raise RuntimeError(
+                    f"קובץ השמע ארוך מדי ({int(song_duration)} שניות, "
+                    f"מקסימום {MAX_SONG_DURATION_SECONDS})"
+                )
+
             # ── Step 1: Listen to the real audio and build a storyboard ────
             _status("audio", "מאזין לשיר ומנתח אותו (Gemini File API)...")
             storyboard = None
@@ -143,7 +161,7 @@ def _run_generation(
                 else:
                     raise RuntimeError("Audio analysis returned invalid scene timings")
             except Exception as audio_err:
-                print(f"[app] Audio analysis failed, using title-only storyboard: {audio_err}")
+                print(f"[app] Audio analysis failed, using title-only storyboard: {safe_error(audio_err)}")
 
             if storyboard is None:
                 _status("storyboard", "יוצר סטורי בורד...")
@@ -178,16 +196,16 @@ def _run_generation(
                         timeout=VEO_SCENE_TIMEOUT,
                     )
                     temp_veo_paths.append(veo_path)
-                    raw_clip = VideoFileClip(veo_path).without_audio().resize(newsize=(1280, 720))
+                    raw_clip = VideoFileClip(veo_path).without_audio().resized(new_size=(1280, 720))
                     clip = fit_clip_duration(raw_clip, scene_dur)
                 except Exception as veo_err:
-                    print(f"[app] Scene {i + 1} Veo generation failed, using still image: {veo_err}")
+                    print(f"[app] Scene {i + 1} Veo generation failed, using still image: {safe_error(veo_err)}")
 
                 if clip is None:
                     try:
                         img = generate_scene_image(scene["image_prompt"], api_key)
                     except Exception as img_err:
-                        print(f"[app] Scene {i + 1} image fallback failed: {img_err}")
+                        print(f"[app] Scene {i + 1} image fallback failed: {safe_error(img_err)}")
                         img = create_placeholder_image(
                             scene.get("title", str(i + 1)),
                             _SCENE_COLORS[i % len(_SCENE_COLORS)],
@@ -210,7 +228,7 @@ def _run_generation(
                 try:
                     subtitles_burned = add_karaoke_subtitles(assembled_path, lyric_lines, output_path)
                 except Exception as sub_err:
-                    print(f"[app] Subtitle burn failed, using video without subtitles: {sub_err}")
+                    print(f"[app] Subtitle burn failed, using video without subtitles: {safe_error(sub_err)}")
 
                 if not subtitles_burned:
                     os.replace(assembled_path, output_path)
@@ -225,7 +243,7 @@ def _run_generation(
         jobs[job_id].update({"status": "done", "output_path": output_path, "progress": 100})
 
     except Exception as exc:
-        jobs[job_id].update({"status": "error", "error": str(exc), "progress": 0})
+        jobs[job_id].update({"status": "error", "error": safe_error(exc), "progress": 0})
 
     finally:
         try:
@@ -329,4 +347,7 @@ def download(job_id: str):
 if __name__ == "__main__":
     _cleanup_old_jobs()
     threading.Thread(target=_cleanup_loop, daemon=True).start()
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # Debug is opt-in: the Werkzeug debugger allows remote code execution to
+    # anyone who can reach it, which is a real risk combined with host="0.0.0.0".
+    debug_mode = os.getenv("FLASK_DEBUG", "false").strip().lower() == "true"
+    app.run(debug=debug_mode, host="0.0.0.0", port=5000)

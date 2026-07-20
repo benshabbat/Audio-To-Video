@@ -15,6 +15,8 @@ import time
 import uuid
 import tempfile
 
+from error_utils import safe_error
+
 _ALLOWED_DURATIONS = (4, 6, 8)  # seconds supported by veo-3.1-generate-preview
 
 
@@ -77,7 +79,7 @@ def generate_scene_video(
                 config=types.GenerateVideosConfig(**config_kwargs),
             )
         except Exception as exc:
-            raise RuntimeError(f"Veo request failed: {exc}") from exc
+            raise RuntimeError(f"Veo request failed: {safe_error(exc)}") from exc
 
     # ── Poll until the long-running operation completes ──────────────────────
     waited = 0
@@ -89,10 +91,10 @@ def generate_scene_video(
         try:
             operation = client.operations.get(operation)
         except Exception as exc:
-            raise RuntimeError(f"Veo polling failed: {exc}") from exc
+            raise RuntimeError(f"Veo polling failed: {safe_error(exc)}") from exc
 
     if getattr(operation, "error", None):
-        raise RuntimeError(f"Veo generation error: {operation.error}")
+        raise RuntimeError(f"Veo generation error: {safe_error(operation.error)}")
 
     result = getattr(operation, "response", None) or getattr(operation, "result", None)
     videos = getattr(result, "generated_videos", None) if result else None

@@ -1,7 +1,6 @@
 import numpy as np
 from PIL import Image
-from moviepy.editor import VideoClip, AudioFileClip, concatenate_videoclips
-import moviepy.video.fx.all as vfx
+from moviepy import VideoClip, AudioFileClip, concatenate_videoclips
 from animation import ChildrenAnimator, StoryboardAnimator, apply_ken_burns
 
 
@@ -58,7 +57,7 @@ def generate_video(
         )
 
     video = VideoClip(animator.make_frame, duration=duration)
-    video = video.set_audio(audio)
+    video = video.with_audio(audio)
 
     video.write_videofile(
         output_path,
@@ -88,8 +87,8 @@ def make_kenburns_clip(
 def fit_clip_duration(clip: VideoClip, target_duration: float) -> VideoClip:
     """Time-stretch a clip so its length matches target_duration exactly."""
     if abs(clip.duration - target_duration) < 0.05:
-        return clip.set_duration(target_duration)
-    return clip.fx(vfx.speedx, final_duration=target_duration)
+        return clip.with_duration(target_duration)
+    return clip.with_speed_scaled(final_duration=target_duration)
 
 
 def assemble_scene_clips(audio_path: str, output_path: str, clips: list) -> None:
@@ -103,13 +102,13 @@ def assemble_scene_clips(audio_path: str, output_path: str, clips: list) -> None
     video = concatenate_videoclips(clips, method="compose")
 
     if video.duration > audio.duration:
-        video = video.subclip(0, audio.duration)
+        video = video.subclipped(0, audio.duration)
     elif video.duration < audio.duration - 0.05:
         pad = audio.duration - video.duration
-        freeze = clips[-1].to_ImageClip(t=max(0, clips[-1].duration - 0.04)).set_duration(pad)
+        freeze = clips[-1].to_ImageClip(t=max(0, clips[-1].duration - 0.04)).with_duration(pad)
         video = concatenate_videoclips([video, freeze], method="compose")
 
-    video = video.set_audio(audio)
+    video = video.with_audio(audio)
     video.write_videofile(
         output_path,
         fps=24,
