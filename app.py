@@ -51,12 +51,21 @@ _STATUS_PROGRESS = {
 FILE_RETENTION_SECONDS = 3 * 60 * 60  # delete finished jobs' files after 3h
 CLEANUP_INTERVAL_SECONDS = 30 * 60
 
+# Veo 3.1 calls are slow and metered — cap how many generation jobs can run
+# at the same time so a burst of uploads can't fan out into unbounded,
+# expensive concurrent Veo/Gemini requests.
+MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
+
 # In-memory job store  {job_id: {status, message, error, output_path, progress, created_at}}
 jobs: dict = {}
 
 
 def _allowed(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _active_job_count() -> int:
+    return sum(1 for job in jobs.values() if job.get("status") not in ("done", "error"))
 
 
 def _cleanup_old_jobs() -> None:
@@ -243,6 +252,11 @@ def generate():
     file = request.files["audio"]
     if not file.filename or not _allowed(file.filename):
         return jsonify({"error": "פורמט לא נתמך (mp3, wav, ogg, flac, m4a, aac)"}), 400
+
+    if _active_job_count() >= MAX_CONCURRENT_JOBS:
+        return jsonify({
+            "error": f"המערכת עמוסה כרגע (עד {MAX_CONCURRENT_JOBS} סרטונים במקביל) — נסה שוב בעוד כמה דקות"
+        }), 429
 
     song_name = (request.form.get("song_name") or "").strip() or "שיר יפה"
     api_key = (request.form.get("api_key") or "").strip() or os.getenv("GEMINI_API_KEY", "")
