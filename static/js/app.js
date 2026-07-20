@@ -13,6 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const formCard     = document.getElementById('formCard');
   const progressCard = document.getElementById('progressCard');
   const statusMsg    = document.getElementById('statusMsg');
+  const progressBarFill = document.getElementById('progressBarFill');
+  const progressPercent = document.getElementById('progressPercent');
   const resultCard   = document.getElementById('resultCard');
   const downloadLink = document.getElementById('downloadLink');
   const resetBtn     = document.getElementById('resetBtn');
@@ -97,6 +99,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const label = data.message || STATUS_LABELS[data.status] || '';
         if (label) statusMsg.textContent = label;
 
+        const pct = Math.max(0, Math.min(100, data.progress || 0));
+        progressBarFill.style.width = `${pct}%`;
+        progressPercent.textContent = `${pct}%`;
+
         if (data.status === 'done') {
           clearInterval(pollTimer);
           showResult(jobId);
@@ -117,6 +123,8 @@ document.addEventListener('DOMContentLoaded', () => {
     errorCard.classList.add('hidden');
     resultCard.classList.add('hidden');
     statusMsg.textContent = msg;
+    progressBarFill.style.width = '0%';
+    progressPercent.textContent = '0%';
     progressCard.classList.remove('hidden');
   }
 

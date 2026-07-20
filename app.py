@@ -41,12 +41,53 @@ _SCENE_COLORS = [
     (77, 150, 255), (199, 125, 255), (255, 160, 80),
 ]
 
-# In-memory job store  {job_id: {status, message, error, output_path}}
+# Rough progress percentage per named status (used when a step has no
+# finer-grained sub-progress of its own, e.g. the Veo clip loop below)
+_STATUS_PROGRESS = {
+    "starting": 0, "audio": 5, "storyboard": 10, "clips": 15,
+    "video": 85, "subtitles": 92, "done": 100, "error": 0,
+}
+
+FILE_RETENTION_SECONDS = 3 * 60 * 60  # delete finished jobs' files after 3h
+CLEANUP_INTERVAL_SECONDS = 30 * 60
+
+# In-memory job store  {job_id: {status, message, error, output_path, progress, created_at}}
 jobs: dict = {}
 
 
 def _allowed(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _cleanup_old_jobs() -> None:
+    """Delete output/upload files (and their job entries) older than FILE_RETENTION_SECONDS."""
+    cutoff = time.time() - FILE_RETENTION_SECONDS
+
+    for folder in (UPLOAD_FOLDER, OUTPUT_FOLDER):
+        try:
+            entries = os.listdir(folder)
+        except OSError:
+            continue
+        for name in entries:
+            path = os.path.join(folder, name)
+            try:
+                if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+            except OSError:
+                pass
+
+    stale_job_ids = [
+        job_id for job_id, job in jobs.items()
+        if job.get("created_at", time.time()) < cutoff
+    ]
+    for job_id in stale_job_ids:
+        jobs.pop(job_id, None)
+
+
+def _cleanup_loop() -> None:
+    while True:
+        time.sleep(CLEANUP_INTERVAL_SECONDS)
+        _cleanup_old_jobs()
 
 
 def _run_generation(
@@ -58,8 +99,10 @@ def _run_generation(
     reference_image_mime: str = "image/png",
     enable_subtitles: bool = True,
 ) -> None:
-    def _status(status: str, message: str = "") -> None:
-        jobs[job_id].update({"status": status, "message": message})
+    def _status(status: str, message: str = "", progress: int = None) -> None:
+        if progress is None:
+            progress = _STATUS_PROGRESS.get(status, jobs[job_id].get("progress", 0))
+        jobs[job_id].update({"status": status, "message": message, "progress": progress})
 
     temp_veo_paths: list = []
     temp_intermediate_paths: list = []
@@ -105,10 +148,15 @@ def _run_generation(
 
             # ── Step 2: Generate a real video clip per scene with Veo 3.1 ──
             scene_clips = []
+            clips_progress_start, clips_progress_end = 15, 80
             for i, (scene, scene_dur) in enumerate(zip(storyboard, scene_durations)):
+                clip_progress = clips_progress_start + int(
+                    (i / len(storyboard)) * (clips_progress_end - clips_progress_start)
+                )
                 _status(
                     "clips",
                     f"מייצר סצנת וידאו {i + 1} מתוך {len(storyboard)} (Veo 3.1)...",
+                    progress=clip_progress,
                 )
                 clip = None
                 try:
@@ -165,10 +213,10 @@ def _run_generation(
             _status("video", "יוצר אנימציה...")
             generate_video(audio_path, song_name, output_path)
 
-        jobs[job_id].update({"status": "done", "output_path": output_path})
+        jobs[job_id].update({"status": "done", "output_path": output_path, "progress": 100})
 
     except Exception as exc:
-        jobs[job_id].update({"status": "error", "error": str(exc)})
+        jobs[job_id].update({"status": "error", "error": str(exc), "progress": 0})
 
     finally:
         try:
@@ -215,7 +263,10 @@ def generate():
     audio_path = os.path.join(UPLOAD_FOLDER, f"{job_id}_{safe_name}")
     file.save(audio_path)
 
-    jobs[job_id] = {"status": "starting", "message": "", "error": None, "output_path": None}
+    jobs[job_id] = {
+        "status": "starting", "message": "", "error": None, "output_path": None,
+        "progress": 0, "created_at": time.time(),
+    }
 
     thread = threading.Thread(
         target=_run_generation,
@@ -240,6 +291,7 @@ def status(job_id: str):
         "status": job["status"],
         "message": job.get("message", ""),
         "error": job.get("error"),
+        "progress": job.get("progress", 0),
         "ready": job["status"] == "done",
     })
 
@@ -261,4 +313,6 @@ def download(job_id: str):
 
 
 if __name__ == "__main__":
+    _cleanup_old_jobs()
+    threading.Thread(target=_cleanup_loop, daemon=True).start()
     app.run(debug=True, host="0.0.0.0", port=5000)
