@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎵 מחולל סרטוני שירים לילדים</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="page-bg">
+    <!-- Decorative animated bubbles -->
+    <div class="bubble b1"></div>
+    <div class="bubble b2"></div>
+    <div class="bubble b3"></div>
+    <div class="bubble b4"></div>
+  </div>
+
+  <div class="container">
+    <header>
+      <div class="logo">🎵</div>
+      <h1>מחולל סרטוני שירים לילדים</h1>
+      <p class="subtitle">העלה שיר — קבל סרטון מונפש וצבעוני!</p>
+    </header>
+
+    <!-- ── Upload form ──────────────────────────────────────────────── -->
+    <div class="card" id="formCard">
+      <form id="uploadForm">
+        <!-- Drop zone -->
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-icon">🎶</div>
+          <p class="drop-title">גרור קובץ שמע לכאן</p>
+          <p class="drop-or">— או —</p>
+          <label for="audioInput" class="btn btn-outline">בחר קובץ</label>
+          <input type="file" id="audioInput" accept=".mp3,.wav,.ogg,.flac,.m4a,.aac" hidden />
+          <p id="chosenFile" class="chosen-file"></p>
+        </div>
+
+        <!-- Song name -->
+        <div class="form-group">
+          <label for="songName">שם השיר</label>
+          <input type="text" id="songName" placeholder="למשל: אני ירד גשם" />
+        </div>
+
+        <!-- API key (optional) -->
+        <div class="form-group">
+          <label for="apiKey">מפתח Gemini API <span class="optional">(אופציונלי)</span></label>
+          <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" />
+          <small>אם הגדרת GEMINI_API_KEY ב-.env — אפשר להשאיר ריק</small>
+        </div>
+
+        <!-- Reference image (optional) -->
+        <div class="form-group">
+          <label for="referenceImage">תמונת דמות ייחוס <span class="optional">(אופציונלי)</span></label>
+          <input type="file" id="referenceImage" accept=".png,.jpg,.jpeg,.webp" />
+          <small>תמונה אחת של הדמות הראשית — Veo 3.1 ישמור עליה עקבית בכל הסצנות</small>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="generateBtn">
+          🎬 צור סרטון
+        </button>
+      </form>
+    </div>
+
+    <!-- ── Progress ─────────────────────────────────────────────────── -->
+    <div class="card hidden" id="progressCard">
+      <div class="progress-wrap">
+        <div class="spinner"></div>
+        <p id="statusMsg" class="status-msg">מכין...</p>
+        <p class="status-hint">יצירת הסרטון עשויה לקחת מספר דקות</p>
+      </div>
+    </div>
+
+    <!-- ── Result ────────────────────────────────────────────────────── -->
+    <div class="card hidden" id="resultCard">
+      <div class="result-wrap">
+        <div class="result-icon">🎉</div>
+        <h2>הסרטון מוכן!</h2>
+        <a id="downloadLink" href="#" class="btn btn-success" download="video.mp4">
+          ⬇️ הורד סרטון
+        </a>
+        <button id="resetBtn" class="btn btn-outline" style="margin-top:0.8rem">
+          ➕ צור סרטון נוסף
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Error ─────────────────────────────────────────────────────── -->
+    <div class="card hidden" id="errorCard">
+      <div class="result-wrap">
+        <div class="result-icon">⚠️</div>
+        <p id="errorMsg" class="error-msg"></p>
+        <button id="errorResetBtn" class="btn btn-outline">נסה שוב</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

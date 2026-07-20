@@ -1,0 +1,9 @@
+flask>=3.0.0
+moviepy>=1.0.3
+Pillow>=10.0.0
+google-genai>=1.0.0
+# Veo 3.1 video generation (client.models.generate_videos) needs a recent
+# google-genai release — run `pip install -U google-genai` if it fails.
+numpy>=1.24.0
+python-dotenv>=1.0.0
+imageio-ffmpeg>=0.4.9
