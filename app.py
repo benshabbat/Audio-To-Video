@@ -26,8 +26,10 @@ app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB
 
 UPLOAD_FOLDER = "uploads"
 OUTPUT_FOLDER = "outputs"
+TEMP_VEO_FOLDER = "temp_veo"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+os.makedirs(TEMP_VEO_FOLDER, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {"mp3", "wav", "ogg", "flac", "m4a", "aac"}
 REFERENCE_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
@@ -71,12 +73,18 @@ MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
 # In-memory job store  {job_id: {status, message, error, output_path, progress, created_at}}
 jobs: dict = {}
 
+# Guards structural changes to `jobs` (insert/delete) so the concurrency-cap
+# check-then-insert in /generate is atomic and concurrent iteration (e.g. from
+# _cleanup_old_jobs) can't crash on a dict-changed-size-during-iteration race.
+_jobs_lock = threading.Lock()
+
 
 def _allowed(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def _active_job_count() -> int:
+def _active_job_count_locked() -> int:
+    """Count active jobs. Caller must hold _jobs_lock."""
     return sum(1 for job in jobs.values() if job.get("status") not in ("done", "error"))
 
 
@@ -84,7 +92,7 @@ def _cleanup_old_jobs() -> None:
     """Delete output/upload files (and their job entries) older than FILE_RETENTION_SECONDS."""
     cutoff = time.time() - FILE_RETENTION_SECONDS
 
-    for folder in (UPLOAD_FOLDER, OUTPUT_FOLDER):
+    for folder in (UPLOAD_FOLDER, OUTPUT_FOLDER, TEMP_VEO_FOLDER):
         try:
             entries = os.listdir(folder)
         except OSError:
@@ -97,12 +105,13 @@ def _cleanup_old_jobs() -> None:
             except OSError:
                 pass
 
-    stale_job_ids = [
-        job_id for job_id, job in jobs.items()
-        if job.get("created_at", time.time()) < cutoff
-    ]
-    for job_id in stale_job_ids:
-        jobs.pop(job_id, None)
+    with _jobs_lock:
+        stale_job_ids = [
+            job_id for job_id, job in jobs.items()
+            if job.get("created_at", time.time()) < cutoff
+        ]
+        for job_id in stale_job_ids:
+            jobs.pop(job_id, None)
 
 
 def _cleanup_loop() -> None:
@@ -127,6 +136,10 @@ def _run_generation(
 
     temp_veo_paths: list = []
     temp_intermediate_paths: list = []
+    # Raw VideoFileClip handles for downloaded Veo clips — must be closed
+    # before their temp files can be deleted (os.remove on an open file
+    # raises OSError on Windows, otherwise silently leaking the file).
+    veo_file_clips: list = []
 
     try:
         output_path = os.path.join(OUTPUT_FOLDER, f"{job_id}.mp4")
@@ -194,9 +207,11 @@ def _run_generation(
                         reference_image_mime=reference_image_mime,
                         duration_seconds=scene_dur,
                         timeout=VEO_SCENE_TIMEOUT,
+                        output_dir=TEMP_VEO_FOLDER,
                     )
                     temp_veo_paths.append(veo_path)
                     raw_clip = VideoFileClip(veo_path).without_audio().resized(new_size=(1280, 720))
+                    veo_file_clips.append(raw_clip)
                     clip = fit_clip_duration(raw_clip, scene_dur)
                 except Exception as veo_err:
                     print(f"[app] Scene {i + 1} Veo generation failed, using still image: {safe_error(veo_err)}")
@@ -246,6 +261,11 @@ def _run_generation(
         jobs[job_id].update({"status": "error", "error": safe_error(exc), "progress": 0})
 
     finally:
+        for clip in veo_file_clips:
+            try:
+                clip.close()
+            except Exception:
+                pass
         try:
             os.remove(audio_path)
         except OSError:
@@ -271,11 +291,6 @@ def generate():
     if not file.filename or not _allowed(file.filename):
         return jsonify({"error": "פורמט לא נתמך (mp3, wav, ogg, flac, m4a, aac)"}), 400
 
-    if _active_job_count() >= MAX_CONCURRENT_JOBS:
-        return jsonify({
-            "error": f"המערכת עמוסה כרגע (עד {MAX_CONCURRENT_JOBS} סרטונים במקביל) — נסה שוב בעוד כמה דקות"
-        }), 429
-
     song_name = (request.form.get("song_name") or "").strip() or "שיר יפה"
     api_key = (request.form.get("api_key") or "").strip() or os.getenv("GEMINI_API_KEY", "")
     enable_subtitles = (request.form.get("enable_subtitles") or "true").strip().lower() != "false"
@@ -291,14 +306,19 @@ def generate():
         reference_image_mime = REFERENCE_IMAGE_MIME[ext]
 
     job_id = str(uuid.uuid4())
+    with _jobs_lock:
+        if _active_job_count_locked() >= MAX_CONCURRENT_JOBS:
+            return jsonify({
+                "error": f"המערכת עמוסה כרגע (עד {MAX_CONCURRENT_JOBS} סרטונים במקביל) — נסה שוב בעוד כמה דקות"
+            }), 429
+        jobs[job_id] = {
+            "status": "starting", "message": "", "error": None, "output_path": None,
+            "progress": 0, "created_at": time.time(),
+        }
+
     safe_name = secure_filename(file.filename)
     audio_path = os.path.join(UPLOAD_FOLDER, f"{job_id}_{safe_name}")
     file.save(audio_path)
-
-    jobs[job_id] = {
-        "status": "starting", "message": "", "error": None, "output_path": None,
-        "progress": 0, "created_at": time.time(),
-    }
 
     thread = threading.Thread(
         target=_run_generation,
@@ -350,4 +370,4 @@ if __name__ == "__main__":
     # Debug is opt-in: the Werkzeug debugger allows remote code execution to
     # anyone who can reach it, which is a real risk combined with host="0.0.0.0".
     debug_mode = os.getenv("FLASK_DEBUG", "false").strip().lower() == "true"
-    app.run(debug=debug_mode, host="0.0.0.0", port=5000)
+    app.run(debug=debug_mode, host="0.0.0.0", port=5000, threaded=True)

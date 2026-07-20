@@ -19,6 +19,11 @@ from error_utils import safe_error
 
 _ALLOWED_DURATIONS = (4, 6, 8)  # seconds supported by veo-3.1-generate-preview
 
+# Bounds each individual HTTP call (submit / poll) so a stalled connection
+# can't hang a job — and its concurrency slot — forever. This is separate
+# from `timeout`, which bounds the overall polling loop.
+_HTTP_TIMEOUT_MS = 120_000
+
 
 def _closest_allowed_duration(seconds: float) -> int:
     return min(_ALLOWED_DURATIONS, key=lambda d: abs(d - seconds))
@@ -33,6 +38,7 @@ def generate_scene_video(
     aspect_ratio: str = "16:9",
     poll_interval: int = 10,
     timeout: int = 300,
+    output_dir: str = None,
 ) -> str:
     """
     Generate a single scene as a real video clip with Veo 3.1.
@@ -43,7 +49,10 @@ def generate_scene_video(
     from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=_HTTP_TIMEOUT_MS),
+    )
     veo_duration = _closest_allowed_duration(duration_seconds)
 
     config_kwargs = {
@@ -102,7 +111,7 @@ def generate_scene_video(
         raise RuntimeError("Veo returned no video")
 
     video = videos[0].video
-    out_path = os.path.join(tempfile.gettempdir(), f"veo_{uuid.uuid4().hex}.mp4")
+    out_path = os.path.join(output_dir or tempfile.gettempdir(), f"veo_{uuid.uuid4().hex}.mp4")
 
     try:
         client.files.download(file=video)

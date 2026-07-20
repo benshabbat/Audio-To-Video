@@ -1,5 +1,6 @@
 uploads/
 outputs/
+temp_veo/
 .env
 __pycache__/
 *.pyc

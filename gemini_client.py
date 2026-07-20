@@ -26,6 +26,17 @@ _AUDIO_MIME = {
     "flac": "audio/flac", "m4a": "audio/mp4", "aac": "audio/aac",
 }
 
+# Bounds each individual HTTP call so a stalled connection can't hang a job
+# (and its concurrency slot) forever.
+_HTTP_TIMEOUT_MS = 120_000
+
+
+def _client(api_key: str):
+    from google import genai
+    from google.genai import types
+
+    return genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=_HTTP_TIMEOUT_MS))
+
 
 def _file_state_name(f) -> str:
     state = getattr(f, "state", None)
@@ -72,9 +83,7 @@ def analyze_song_audio(audio_path: str, song_name: str, api_key: str, num_scenes
     Raises RuntimeError on any failure — caller should fall back to
     get_storyboard() (title-only, uniform-duration storyboard).
     """
-    from google import genai
-
-    client = genai.Client(api_key=api_key)
+    client = _client(api_key)
     uploaded = _upload_audio_file(client, audio_path)
 
     try:
@@ -210,9 +219,7 @@ def get_storyboard(song_name: str, api_key: str, num_scenes: int = 6) -> list:
         return _default_storyboard(song_name, num_scenes)
 
     try:
-        from google import genai  # google-genai package
-
-        client = genai.Client(api_key=api_key)
+        client = _client(api_key)
         prompt = f"""Create a {num_scenes}-scene visual storyboard for a children's song called "{song_name}".
 
 Return ONLY a valid JSON array (no other text):
@@ -257,10 +264,9 @@ def generate_scene_image(
 
     Raises RuntimeError if both methods fail — caller should catch and use a placeholder.
     """
-    from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=api_key)
+    client = _client(api_key)
 
     # ── Method 1: Imagen 4 ────────────────────────────────────────────────────
     try:
@@ -301,5 +307,5 @@ def generate_scene_image(
     except Exception as e2:
         print(f"[gemini] Gemini image model failed: {safe_error(e2)}")
 
-    raise RuntimeError("Image generation failed (Imagen 3 + Gemini both unavailable)")
+    raise RuntimeError("Image generation failed (Imagen 4 + Gemini both unavailable)")
 
