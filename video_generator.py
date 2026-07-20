@@ -1,60 +1,36 @@
 import numpy as np
 from PIL import Image
 from moviepy import VideoClip, AudioFileClip, concatenate_videoclips
-from animation import ChildrenAnimator, StoryboardAnimator, apply_ken_burns
+from animation import ChildrenAnimator, apply_ken_burns
 
 
 def generate_video(
     audio_path: str,
     song_name: str,
     output_path: str,
-    storyboard: list = None,
-    scene_images: list = None,
     theme: dict = None,
 ) -> None:
     """
-    Create an animated MP4 video synced to the given audio file.
-
-    If storyboard + scene_images are provided, uses StoryboardAnimator
-    (AI-generated images with Ken Burns + crossfade).
-    Otherwise falls back to the procedural ChildrenAnimator.
+    Create an animated MP4 video synced to the given audio file, using the
+    procedural ChildrenAnimator fallback (no AI-generated scenes).
     """
     audio = AudioFileClip(audio_path)
     duration = audio.duration
 
-    if storyboard and scene_images:
-        # ── Storyboard mode ────────────────────────────────────────────────
-        total_ratio = sum(s.get("duration_ratio", 1.0) for s in storyboard)
-        scene_durations = [
-            (s.get("duration_ratio", 1.0) / total_ratio) * duration
-            for s in storyboard
-        ]
-        # Correct any floating-point drift so durations sum exactly to audio length
-        diff = duration - sum(scene_durations)
-        scene_durations[-1] += diff
+    colors: list = []
+    if theme:
+        for key in ("bg_color1", "bg_color2"):
+            val = theme.get(key)
+            if val:
+                colors.append(val)
+        colors.extend(theme.get("colors", []))
 
-        animator = StoryboardAnimator(
-            images=scene_images,
-            scene_durations=scene_durations,
-            title=song_name,
-            size=(1280, 720),
-        )
-    else:
-        # ── Procedural fallback ────────────────────────────────────────────
-        colors: list = []
-        if theme:
-            for key in ("bg_color1", "bg_color2"):
-                val = theme.get(key)
-                if val:
-                    colors.append(val)
-            colors.extend(theme.get("colors", []))
-
-        animator = ChildrenAnimator(
-            title=song_name,
-            duration=duration,
-            colors=colors,
-            size=(1280, 720),
-        )
+    animator = ChildrenAnimator(
+        title=song_name,
+        duration=duration,
+        colors=colors,
+        size=(1280, 720),
+    )
 
     video = VideoClip(animator.make_frame, duration=duration)
     video = video.with_audio(audio)

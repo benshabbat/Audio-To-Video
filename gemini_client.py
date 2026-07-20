@@ -301,5 +301,5 @@ def generate_scene_image(
     except Exception as e2:
         print(f"[gemini] Gemini image model failed: {safe_error(e2)}")
 
-    raise RuntimeError("Image generation failed (Imagen 3 + Gemini both unavailable)")
+    raise RuntimeError("Image generation failed (Imagen 4 + Gemini both unavailable)")
 
