@@ -18,6 +18,7 @@ from video_generator import (
     fit_clip_duration,
     assemble_scene_clips,
 )
+from subtitles import add_karaoke_subtitles
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB
@@ -55,11 +56,13 @@ def _run_generation(
     api_key: str,
     reference_image_bytes: bytes = None,
     reference_image_mime: str = "image/png",
+    enable_subtitles: bool = True,
 ) -> None:
     def _status(status: str, message: str = "") -> None:
         jobs[job_id].update({"status": status, "message": message})
 
     temp_veo_paths: list = []
+    temp_intermediate_paths: list = []
 
     try:
         output_path = os.path.join(OUTPUT_FOLDER, f"{job_id}.mp4")
@@ -73,6 +76,7 @@ def _run_generation(
             _status("audio", "מאזין לשיר ומנתח אותו (Gemini File API)...")
             storyboard = None
             scene_durations = None
+            lyric_lines: list = []
             try:
                 analysis = analyze_song_audio(audio_path, song_name, api_key)
                 candidate_scenes = analysis["scenes"]
@@ -83,6 +87,7 @@ def _run_generation(
                     storyboard = candidate_scenes
                     scene_durations = candidate_durations
                     scene_durations[-1] += song_duration - sum(scene_durations)
+                    lyric_lines = analysis.get("lyric_lines", [])
                 else:
                     raise RuntimeError("Audio analysis returned invalid scene timings")
             except Exception as audio_err:
@@ -137,7 +142,24 @@ def _run_generation(
 
             # ── Step 3: Assemble final video ────────────────────────────────
             _status("video", "מרכיב סרטון סופי...")
-            assemble_scene_clips(audio_path, output_path, scene_clips)
+
+            if lyric_lines and enable_subtitles:
+                assembled_path = os.path.join(OUTPUT_FOLDER, f"{job_id}_assembled.mp4")
+                temp_intermediate_paths.append(assembled_path)
+                assemble_scene_clips(audio_path, assembled_path, scene_clips)
+
+                _status("subtitles", "מטמיע כתוביות קריוקי...")
+                subtitles_burned = False
+                try:
+                    subtitles_burned = add_karaoke_subtitles(assembled_path, lyric_lines, output_path)
+                except Exception as sub_err:
+                    print(f"[app] Subtitle burn failed, using video without subtitles: {sub_err}")
+
+                if not subtitles_burned:
+                    os.replace(assembled_path, output_path)
+                    temp_intermediate_paths.remove(assembled_path)
+            else:
+                assemble_scene_clips(audio_path, output_path, scene_clips)
         else:
             # ── Procedural fallback (no API key) ──────────────────────────
             _status("video", "יוצר אנימציה...")
@@ -153,7 +175,7 @@ def _run_generation(
             os.remove(audio_path)
         except OSError:
             pass
-        for path in temp_veo_paths:
+        for path in temp_veo_paths + temp_intermediate_paths:
             try:
                 os.remove(path)
             except OSError:
@@ -176,6 +198,7 @@ def generate():
 
     song_name = (request.form.get("song_name") or "").strip() or "שיר יפה"
     api_key = (request.form.get("api_key") or "").strip() or os.getenv("GEMINI_API_KEY", "")
+    enable_subtitles = (request.form.get("enable_subtitles") or "true").strip().lower() != "false"
 
     reference_image_bytes = None
     reference_image_mime = "image/png"
@@ -196,7 +219,7 @@ def generate():
 
     thread = threading.Thread(
         target=_run_generation,
-        args=(job_id, audio_path, song_name, api_key, reference_image_bytes, reference_image_mime),
+        args=(job_id, audio_path, song_name, api_key, reference_image_bytes, reference_image_mime, enable_subtitles),
         daemon=True,
     )
     thread.start()

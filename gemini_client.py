@@ -54,15 +54,18 @@ def _upload_audio_file(client, audio_path: str, timeout: int = 60):
 def analyze_song_audio(audio_path: str, song_name: str, api_key: str, num_scenes: int = 6) -> dict:
     """
     Upload the song's actual audio to Gemini and have it listen to the song
-    directly (native audio understanding), extracting lyrics/BPM/mood and a
-    scene-by-scene storyboard timed to the song's real structure.
+    directly (native audio understanding), extracting lyrics/BPM/mood, a
+    scene-by-scene storyboard timed to the song's real structure, and
+    line-by-line timed lyrics for karaoke-style subtitles.
 
     Returns:
         {
           "lyrics": str, "bpm": int | None, "mood": str,
           "scenes": [{"title": Hebrew str, "image_prompt": English str,
-                      "start": float seconds, "end": float seconds}, ...]
+                      "start": float seconds, "end": float seconds}, ...],
+          "lyric_lines": [{"text": str, "start": float seconds, "end": float seconds}, ...]
         }
+    "lyric_lines" is an empty list for instrumental songs.
 
     Raises RuntimeError on any failure — caller should fall back to
     get_storyboard() (title-only, uniform-duration storyboard).
@@ -87,13 +90,21 @@ Return ONLY a valid JSON object (no other text):
       "start": seconds as a float,
       "end": seconds as a float
     }}
+  ],
+  "lyric_lines": [
+    {{
+      "text": "one sung line, in the language it's actually sung in",
+      "start": seconds as a float when this line begins,
+      "end": seconds as a float when this line ends
+    }}
   ]
 }}
 
 Rules:
 - Base the scenes on the song's real structure (intro/verse/chorus/etc.) and lyrics content — not guesswork.
 - Exactly {num_scenes} scenes, contiguous, covering the entire song with no gaps or overlaps (first scene starts at 0, last scene ends at the song's total duration).
-- image_prompt must be in English only."""
+- image_prompt must be in English only.
+- lyric_lines must cover every sung line in the song in chronological order with accurate timing; return an empty array if the song is instrumental."""
 
         response = client.models.generate_content(
             model="gemini-2.0-flash",
@@ -109,11 +120,16 @@ Rules:
         if not isinstance(scenes, list) or not scenes:
             raise RuntimeError("Gemini audio analysis returned no scenes")
 
+        lyric_lines = data.get("lyric_lines")
+        if not isinstance(lyric_lines, list):
+            lyric_lines = []
+
         return {
             "lyrics": data.get("lyrics", ""),
             "bpm": data.get("bpm"),
             "mood": data.get("mood", ""),
             "scenes": scenes[:num_scenes],
+            "lyric_lines": lyric_lines,
         }
     finally:
         try:
