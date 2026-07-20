@@ -4,7 +4,7 @@ Gemini API client:
      it listen to the song, returning lyrics/BPM/mood + a storyboard timed to
      the song's actual section boundaries
   2. get_storyboard  – title-only storyboard fallback (uniform scene lengths)
-  3. generate_scene_image – generate a single scene image via Imagen 3 (or Gemini fallback)
+  3. generate_scene_image – generate a single scene image via Imagen 4 (or Gemini fallback)
 
 Uses the `google-genai` package (google.genai).
 Raises RuntimeError from analyze_song_audio / generate_scene_image on total
@@ -18,6 +18,8 @@ import json
 import base64
 
 from PIL import Image
+
+from error_utils import safe_error
 
 _AUDIO_MIME = {
     "mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg",
@@ -107,7 +109,7 @@ Rules:
 - lyric_lines must cover every sung line in the song in chronological order with accurate timing; return an empty array if the song is instrumental."""
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-flash-latest",
             contents=[uploaded, prompt],
         )
         text = response.text.strip()
@@ -228,7 +230,7 @@ Rules:
 - Exactly {num_scenes} scenes, no duplicate titles"""
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-flash-latest",
             contents=prompt,
         )
         text = response.text.strip()
@@ -239,7 +241,7 @@ Rules:
                 return scenes[:num_scenes]
 
     except Exception as exc:
-        print(f"[gemini] Storyboard error: {exc}")
+        print(f"[gemini] Storyboard error: {safe_error(exc)}")
 
     return _default_storyboard(song_name, num_scenes)
 
@@ -250,7 +252,7 @@ def generate_scene_image(
     size: tuple = (1280, 720),
 ) -> Image.Image:
     """
-    Generate a 16:9 scene image using Imagen 3.
+    Generate a 16:9 scene image using Imagen 4.
     Falls back to the Gemini image-output model if Imagen is unavailable.
 
     Raises RuntimeError if both methods fail — caller should catch and use a placeholder.
@@ -260,10 +262,10 @@ def generate_scene_image(
 
     client = genai.Client(api_key=api_key)
 
-    # ── Method 1: Imagen 3 ────────────────────────────────────────────────────
+    # ── Method 1: Imagen 4 ────────────────────────────────────────────────────
     try:
         response = client.models.generate_images(
-            model="imagen-3.0-generate-002",
+            model="imagen-4.0-generate-001",
             prompt=image_prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=1,
@@ -276,12 +278,12 @@ def generate_scene_image(
         return img.resize(size, Image.LANCZOS)
 
     except Exception as e1:
-        print(f"[gemini] Imagen 3 failed: {e1}")
+        print(f"[gemini] Imagen 4 failed: {safe_error(e1)}")
 
     # ── Method 2: Gemini image-output model ───────────────────────────────────
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash-preview-image-generation",
+            model="gemini-2.5-flash-image",
             contents=image_prompt,
             config=types.GenerateContentConfig(
                 response_modalities=["image"],
@@ -297,7 +299,7 @@ def generate_scene_image(
                     return img.resize(size, Image.LANCZOS)
 
     except Exception as e2:
-        print(f"[gemini] Gemini image model failed: {e2}")
+        print(f"[gemini] Gemini image model failed: {safe_error(e2)}")
 
     raise RuntimeError("Image generation failed (Imagen 3 + Gemini both unavailable)")
 

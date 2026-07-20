@@ -1,5 +1,5 @@
 flask>=3.0.0
-moviepy>=1.0.3
+moviepy>=2.0.0
 Pillow>=10.0.0
 google-genai>=1.0.0
 # Veo 3.1 video generation (client.models.generate_videos) needs a recent
