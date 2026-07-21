@@ -63,6 +63,27 @@
           </label>
         </div>
 
+        <!-- Custom storyboard (optional, advanced) -->
+        <details class="advanced-section">
+          <summary>סטוריבורד מותאם אישית <span class="optional">(אופציונלי, מתקדם)</span></summary>
+          <div class="form-group">
+            <label for="customStoryboard">JSON של הסצנות</label>
+            <textarea
+              id="customStoryboard"
+              rows="6"
+              placeholder='[
+  {"title": "פתיחה", "image_prompt": "English description for Veo/Imagen", "duration_ratio": 1.0},
+  {"title": "סיום", "image_prompt": "English description...", "duration_ratio": 1.0}
+]'
+            ></textarea>
+            <small>
+              אם תמלא כאן — המערכת תשתמש בסצנות האלה במקום ליצור סטוריבורד אוטומטית עם Gemini.
+              עד {{ max_custom_scenes }} סצנות, לכל סצנה <code>title</code> (עברית), <code>image_prompt</code> (אנגלית, חובה) ו-<code>duration_ratio</code> אופציונלי.
+              שים לב: כתוביות קריוקי לא זמינות עם סטוריבורד מותאם אישית.
+            </small>
+          </div>
+        </details>
+
         <button type="submit" class="btn btn-primary" id="generateBtn">
           🎬 צור סרטון
         </button>
