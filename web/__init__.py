@@ -15,4 +15,7 @@ def create_app() -> Flask:
     from .routes import main_bp
     app.register_blueprint(main_bp)
 
+    from core.jobs import start_cleanup_thread
+    start_cleanup_thread()
+
     return app
