@@ -19,6 +19,11 @@ from error_utils import safe_error
 
 _ALLOWED_DURATIONS = (4, 6, 8)  # seconds supported by veo-3.1-generate-preview
 
+# Lite tier is ~1/3 the cost of the full model with no feature loss for this
+# app's usage (reference-image conditioning works on both). Override via env
+# if higher fidelity is ever worth the extra cost.
+_VEO_MODEL = os.getenv("VEO_MODEL", "veo-3.1-lite-generate-preview")
+
 # Bounds each individual HTTP call (submit / poll) so a stalled connection
 # can't hang a job — and its concurrency slot — forever. This is separate
 # from `timeout`, which bounds the overall polling loop.
@@ -71,7 +76,7 @@ def generate_scene_video(
     if image is not None:
         try:
             operation = client.models.generate_videos(
-                model="veo-3.1-generate-preview",
+                model=_VEO_MODEL,
                 prompt=prompt,
                 config=types.GenerateVideosConfig(reference_images=[image], **config_kwargs),
             )
@@ -82,7 +87,7 @@ def generate_scene_video(
     if operation is None:
         try:
             operation = client.models.generate_videos(
-                model="veo-3.1-generate-preview",
+                model=_VEO_MODEL,
                 prompt=prompt,
                 image=image,
                 config=types.GenerateVideosConfig(**config_kwargs),

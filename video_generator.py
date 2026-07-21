@@ -43,6 +43,7 @@ def generate_video(
         preset="fast",
         threads=4,
         logger=None,
+        ffmpeg_params=["-movflags", "+faststart"],
     )
 
     audio.close()
@@ -93,6 +94,7 @@ def assemble_scene_clips(audio_path: str, output_path: str, clips: list) -> None
         preset="fast",
         threads=4,
         logger=None,
+        ffmpeg_params=["-movflags", "+faststart"],
     )
 
     audio.close()
