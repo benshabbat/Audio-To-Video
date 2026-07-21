@@ -38,6 +38,20 @@ _STATUS_PROGRESS = {
     "video": 85, "subtitles": 92, "done": 100, "error": 0,
 }
 
+DEFAULT_NUM_SCENES = 6
+
+# Veo's shortest supported clip is 4s (ai/veo_client._ALLOWED_DURATIONS).
+# Asking for more/shorter scenes than the song can give ~4s each just means
+# every Veo clip gets time-stretched (sped up) to squeeze into its shorter
+# slot — paying for a full ~4-8s Veo generation per scene while using only a
+# fraction of it. Scaling scene count down for short audio avoids that.
+MIN_SCENE_SECONDS = 4.0
+
+
+def _scene_count_for_duration(duration: float) -> int:
+    max_scenes_that_fit = int(duration // MIN_SCENE_SECONDS)
+    return max(2, min(DEFAULT_NUM_SCENES, max_scenes_that_fit))
+
 
 def run_generation(
     job_id: str,
@@ -74,13 +88,15 @@ def run_generation(
             )
 
         if api_key:
+            num_scenes = _scene_count_for_duration(song_duration)
+
             # ── Step 1: Listen to the real audio and build a storyboard ────
             _status("audio", "מאזין לשיר ומנתח אותו (Gemini File API)...")
             storyboard = None
             scene_durations = None
             lyric_lines: list = []
             try:
-                analysis = analyze_song_audio(audio_path, song_name, api_key)
+                analysis = analyze_song_audio(audio_path, song_name, api_key, num_scenes=num_scenes)
                 candidate_scenes = analysis["scenes"]
                 candidate_durations = [
                     s.get("end", 0) - s.get("start", 0) for s in candidate_scenes
@@ -97,7 +113,7 @@ def run_generation(
 
             if storyboard is None:
                 _status("storyboard", "יוצר סטורי בורד...")
-                storyboard = get_storyboard(song_name, api_key)
+                storyboard = get_storyboard(song_name, api_key, num_scenes=num_scenes)
                 total_ratio = sum(s.get("duration_ratio", 1.0) for s in storyboard)
                 scene_durations = [
                     (s.get("duration_ratio", 1.0) / total_ratio) * song_duration
