@@ -1,5 +1,5 @@
 import os
-from flask import Flask
+from flask import Flask, jsonify
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -11,6 +11,13 @@ def create_app() -> Flask:
         static_folder=os.path.join(_PROJECT_ROOT, "static"),
     )
     app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB
+
+    from .limiter import limiter
+    limiter.init_app(app)
+
+    @app.errorhandler(429)
+    def _rate_limited(_exc):
+        return jsonify({"error": "יותר מדי בקשות, נסה שוב מאוחר יותר"}), 429
 
     from .routes import main_bp
     app.register_blueprint(main_bp)

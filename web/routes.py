@@ -13,6 +13,7 @@ from core.jobs import (
     active_job_count_locked,
 )
 from core.generation import run_generation
+from .limiter import limiter, GENERATE_RATE_LIMIT
 
 main_bp = Blueprint("main", __name__)
 
@@ -37,6 +38,7 @@ def index():
 
 
 @main_bp.route("/generate", methods=["POST"])
+@limiter.limit(GENERATE_RATE_LIMIT)
 def generate():
     if "audio" not in request.files:
         return jsonify({"error": "לא הועלה קובץ שמע"}), 400
