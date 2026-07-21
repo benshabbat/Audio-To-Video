@@ -61,6 +61,15 @@ python app.py
 
 פתח דפדפן בכתובת: **http://localhost:5000**
 
+### עם Docker
+
+```bash
+docker build -t audio-to-video .
+docker run -p 5000:5000 --env-file .env audio-to-video
+```
+
+⚠️ **חשוב**: ה-container חייב לרוץ כ-**instance יחיד** (replica אחד, `--workers 1`ב-gunicorn — זה כבר מוגדר כך ב-`Dockerfile`). ה-job store, ה-concurrency cap (`MAX_CONCURRENT_JOBS`) ומגביל הקצב (`GENERATE_RATE_LIMIT`) כולם state בזיכרון של תהליך יחיד — הרצה של כמה workers/replicas תיתן לכל אחד עותק נפרד ותעקוף את המגבלות בפועל. אם בעתיד צריך לסקל לכמה instances, צריך קודם להעביר את ה-state הזה לאחסון משותף (למשל Redis).
+
 ---
 
 ## שימוש
@@ -99,7 +108,9 @@ audioToVideo/
 │   ├── video_generator.py     # הרכבת הסרטון הסופי וסנכרון אודיו
 │   └── subtitles.py           # בניית SRT + שריפת כתוביות קריוקי עם FFmpeg
 ├── requirements.txt
+├── requirements-dev.txt
 ├── .env.example
+├── Dockerfile
 ├── templates/
 │   └── index.html
 └── static/
