@@ -1,5 +1,7 @@
 # 🎵 מחולל סרטוני שירים לילדים
 
+[![Tests](https://github.com/benshabbat/Audio-To-Video/actions/workflows/tests.yml/badge.svg)](https://github.com/benshabbat/Audio-To-Video/actions/workflows/tests.yml)
+
 אפליקציית Python שמקבלת קובץ שמע (שיר), נותנת ל-Gemini *להאזין* לו בפועל דרך ה-File API, בונה ממנו סטורי בורד מבוסס מילים/קצב/מבנה אמיתי, ומייצרת **סרטון MP4 עם אנימציית וידאו אמיתית** באמצעות Veo 3.1 — מסונכרן לאורך השיר.
 
 ---
