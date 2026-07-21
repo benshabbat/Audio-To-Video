@@ -107,6 +107,17 @@ audioToVideo/
 
 ---
 
+## בדיקות
+
+טסטים ליחידה עבור פונקציות דטרמיניסטיות (ללא קריאות API בתשלום):
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+---
+
 ## דרישות מערכת
 
 - Python 3.10+
