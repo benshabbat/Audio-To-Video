@@ -1,7 +1,12 @@
 import numpy as np
 from PIL import Image
 from moviepy import VideoClip, AudioFileClip, concatenate_videoclips
-from animation import ChildrenAnimator, apply_ken_burns
+from .animation import ChildrenAnimator
+from .image_utils import apply_ken_burns
+
+# Moves the moov atom to the front of the file so players (e.g. YouTube,
+# mobile browsers) can start playback before the whole file has downloaded.
+_FASTSTART_PARAMS = ["-movflags", "+faststart"]
 
 
 def generate_video(
@@ -43,7 +48,7 @@ def generate_video(
         preset="fast",
         threads=4,
         logger=None,
-        ffmpeg_params=["-movflags", "+faststart"],
+        ffmpeg_params=_FASTSTART_PARAMS,
     )
 
     audio.close()
@@ -94,7 +99,7 @@ def assemble_scene_clips(audio_path: str, output_path: str, clips: list) -> None
         preset="fast",
         threads=4,
         logger=None,
-        ffmpeg_params=["-movflags", "+faststart"],
+        ffmpeg_params=_FASTSTART_PARAMS,
     )
 
     audio.close()
