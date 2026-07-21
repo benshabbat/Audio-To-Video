@@ -63,17 +63,17 @@ def run_generation(
     try:
         output_path = os.path.join(OUTPUT_FOLDER, f"{job_id}.mp4")
 
+        audio_probe = AudioFileClip(audio_path)
+        song_duration = audio_probe.duration
+        audio_probe.close()
+
+        if song_duration > MAX_SONG_DURATION_SECONDS:
+            raise RuntimeError(
+                f"קובץ השמע ארוך מדי ({int(song_duration)} שניות, "
+                f"מקסימום {MAX_SONG_DURATION_SECONDS})"
+            )
+
         if api_key:
-            audio_probe = AudioFileClip(audio_path)
-            song_duration = audio_probe.duration
-            audio_probe.close()
-
-            if song_duration > MAX_SONG_DURATION_SECONDS:
-                raise RuntimeError(
-                    f"קובץ השמע ארוך מדי ({int(song_duration)} שניות, "
-                    f"מקסימום {MAX_SONG_DURATION_SECONDS})"
-                )
-
             # ── Step 1: Listen to the real audio and build a storyboard ────
             _status("audio", "מאזין לשיר ומנתח אותו (Gemini File API)...")
             storyboard = None

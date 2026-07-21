@@ -67,3 +67,25 @@ def cleanup_loop() -> None:
     while True:
         time.sleep(CLEANUP_INTERVAL_SECONDS)
         cleanup_old_jobs()
+
+
+_cleanup_started = False
+_cleanup_start_lock = threading.Lock()
+
+
+def start_cleanup_thread() -> None:
+    """
+    Run an immediate cleanup pass and start the periodic background cleanup
+    loop. Called from the app factory so cleanup runs under any launch method
+    (`python app.py`, gunicorn, waitress, ...), not just the __main__ dev-server
+    path. Idempotent — safe to call more than once per process (e.g. Werkzeug's
+    debug reloader re-imports the app) since it only starts the thread once.
+    """
+    global _cleanup_started
+    with _cleanup_start_lock:
+        if _cleanup_started:
+            return
+        _cleanup_started = True
+
+    cleanup_old_jobs()
+    threading.Thread(target=cleanup_loop, daemon=True).start()
