@@ -8,11 +8,9 @@ Raises RuntimeError on total failure so the caller can fall back to
 storyboard.get_storyboard() (title-only, uniform-duration storyboard).
 """
 
-import re
 import time
-import json
 
-from .genai_client import get_client
+from .genai_client import get_client, parse_json_block
 
 _AUDIO_MIME = {
     "mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg",
@@ -104,11 +102,10 @@ Rules:
             contents=[uploaded, prompt],
         )
         text = response.text.strip()
-        json_match = re.search(r"\{.*\}", text, re.DOTALL)
-        if not json_match:
+        data = parse_json_block(text, "{", "}")
+        if data is None:
             raise RuntimeError("Gemini did not return JSON for audio analysis")
 
-        data = json.loads(json_match.group())
         scenes = data.get("scenes")
         if not isinstance(scenes, list) or not scenes:
             raise RuntimeError("Gemini audio analysis returned no scenes")
