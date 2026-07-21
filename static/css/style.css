@@ -130,7 +130,8 @@ h1 {
 .optional { font-weight: 400; font-size: .82rem; }
 
 .form-group input[type="text"],
-.form-group input[type="password"] {
+.form-group input[type="password"],
+.form-group textarea {
   width: 100%;
   padding: .65rem 1rem;
   background: rgba(255,255,255,0.06);
@@ -141,8 +142,40 @@ h1 {
   outline: none;
   transition: border-color .2s;
 }
-.form-group input:focus { border-color: var(--purple); }
+.form-group textarea {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: .82rem;
+  resize: vertical;
+  direction: ltr;
+  text-align: left;
+}
+.form-group input:focus, .form-group textarea:focus { border-color: var(--purple); }
 .form-group small { display:block; margin-top:.35rem; font-size:.78rem; color:var(--muted); }
+.form-group small code {
+  background: rgba(255,255,255,0.08);
+  padding: .1rem .35rem;
+  border-radius: 4px;
+  font-size: .82rem;
+}
+
+/* ── Advanced / collapsible section ──────────────────────────────────── */
+.advanced-section {
+  margin-bottom: 1.2rem;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: .2rem .9rem;
+}
+.advanced-section summary {
+  cursor: pointer;
+  padding: .6rem 0;
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--muted);
+  user-select: none;
+}
+.advanced-section[open] summary { margin-bottom: .3rem; }
+.advanced-section .form-group { margin-bottom: 1rem; }
+.advanced-section .form-group:last-child { margin-bottom: .6rem; }
 
 /* ── Buttons ──────────────────────────────────────────────────────────── */
 .btn {

@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const apiKey       = document.getElementById('apiKey');
   const referenceImage = document.getElementById('referenceImage');
   const enableSubtitles = document.getElementById('enableSubtitles');
+  const customStoryboard = document.getElementById('customStoryboard');
   const uploadForm   = document.getElementById('uploadForm');
   const generateBtn  = document.getElementById('generateBtn');
   const formCard     = document.getElementById('formCard');
@@ -58,6 +59,16 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const customStoryboardText = customStoryboard.value.trim();
+    if (customStoryboardText) {
+      try {
+        JSON.parse(customStoryboardText);
+      } catch (err) {
+        alert('הסטוריבורד המותאם אינו JSON תקין: ' + err.message);
+        return;
+      }
+    }
+
     showProgress('מעלה קובץ...');
 
     const fd = new FormData();
@@ -68,6 +79,9 @@ document.addEventListener('DOMContentLoaded', () => {
       fd.append('reference_image', referenceImage.files[0]);
     }
     fd.append('enable_subtitles', enableSubtitles.checked ? 'true' : 'false');
+    if (customStoryboardText) {
+      fd.append('custom_storyboard', customStoryboardText);
+    }
 
     try {
       const res  = await fetch('/generate', { method: 'POST', body: fd });
@@ -151,6 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
     songName.value = '';
     referenceImage.value = '';
     enableSubtitles.checked = true;
+    customStoryboard.value = '';
     if (pollTimer) clearInterval(pollTimer);
   }
 

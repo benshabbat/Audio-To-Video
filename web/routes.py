@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import uuid
 import threading
@@ -23,6 +24,11 @@ REFERENCE_IMAGE_MIME = {
     "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp",
 }
 
+# Caps how many scenes a user-supplied custom storyboard can request — each
+# scene triggers a real, billed Veo/Imagen call, so this can't be unbounded.
+MAX_CUSTOM_SCENES = 10
+MAX_CUSTOM_PROMPT_LENGTH = 2000
+
 
 def _allowed(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -32,9 +38,52 @@ def _valid_job_id(job_id: str) -> bool:
     return all(c.isalnum() or c == "-" for c in job_id)
 
 
+def _parse_custom_storyboard(raw: str) -> list:
+    """
+    Parse and validate a user-supplied storyboard JSON string into the same
+    shape core/generation.py expects from Gemini's own storyboard: a list of
+    {"title", "image_prompt", "duration_ratio"} dicts. Raises ValueError with
+    a Hebrew message (shown directly to the caller) on any invalid input.
+    """
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        raise ValueError("הסטוריבורד המותאם אינו JSON תקין")
+
+    if not isinstance(data, list) or not data:
+        raise ValueError("הסטוריבורד המותאם חייב להיות רשימה לא ריקה של סצנות")
+
+    if len(data) > MAX_CUSTOM_SCENES:
+        raise ValueError(f"מקסימום {MAX_CUSTOM_SCENES} סצנות בסטוריבורד מותאם אישית")
+
+    scenes = []
+    for i, scene in enumerate(data):
+        if not isinstance(scene, dict):
+            raise ValueError(f"סצנה {i + 1} אינה אובייקט תקין")
+
+        image_prompt = str(scene.get("image_prompt") or "").strip()
+        if not image_prompt:
+            raise ValueError(f"לסצנה {i + 1} חסר image_prompt")
+        if len(image_prompt) > MAX_CUSTOM_PROMPT_LENGTH:
+            raise ValueError(f"ה-image_prompt של סצנה {i + 1} ארוך מדי")
+
+        duration_ratio = scene.get("duration_ratio", 1.0)
+        if not isinstance(duration_ratio, (int, float)) or duration_ratio <= 0:
+            duration_ratio = 1.0
+
+        title = str(scene.get("title") or f"סצנה {i + 1}").strip()[:100]
+        scenes.append({
+            "title": title,
+            "image_prompt": image_prompt,
+            "duration_ratio": float(duration_ratio),
+        })
+
+    return scenes
+
+
 @main_bp.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", max_custom_scenes=MAX_CUSTOM_SCENES)
 
 
 @main_bp.route("/generate", methods=["POST"])
@@ -61,6 +110,14 @@ def generate():
         reference_image_bytes = ref_file.read()
         reference_image_mime = REFERENCE_IMAGE_MIME[ext]
 
+    custom_storyboard = None
+    raw_storyboard = (request.form.get("custom_storyboard") or "").strip()
+    if raw_storyboard:
+        try:
+            custom_storyboard = _parse_custom_storyboard(raw_storyboard)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
     job_id = str(uuid.uuid4())
     with jobs_lock:
         if active_job_count_locked() >= MAX_CONCURRENT_JOBS:
@@ -78,7 +135,10 @@ def generate():
 
     thread = threading.Thread(
         target=run_generation,
-        args=(job_id, audio_path, song_name, api_key, reference_image_bytes, reference_image_mime, enable_subtitles),
+        args=(
+            job_id, audio_path, song_name, api_key,
+            reference_image_bytes, reference_image_mime, enable_subtitles, custom_storyboard,
+        ),
         daemon=True,
     )
     thread.start()

@@ -87,6 +87,7 @@ def run_generation(
     reference_image_bytes: bytes = None,
     reference_image_mime: str = "image/png",
     enable_subtitles: bool = True,
+    custom_storyboard: list = None,
 ) -> None:
     def _status(status: str, message: str = "", progress: int = None) -> None:
         if progress is None:
@@ -114,33 +115,44 @@ def run_generation(
             )
 
         if api_key:
-            num_scenes = _scene_count_for_duration(song_duration)
-
-            # ── Step 1: Listen to the real audio and build a storyboard ────
-            _status("audio", "מאזין לשיר ומנתח אותו (Gemini File API)...")
             storyboard = None
             scene_durations = None
             lyric_lines: list = []
-            try:
-                analysis = analyze_song_audio(audio_path, song_name, api_key, num_scenes=num_scenes)
-                candidate_scenes = analysis["scenes"]
-                candidate_durations = [
-                    s.get("end", 0) - s.get("start", 0) for s in candidate_scenes
-                ]
-                if len(candidate_scenes) >= 2 and all(d > 0.2 for d in candidate_durations):
-                    storyboard = candidate_scenes
-                    scene_durations = _reconcile_scene_durations(candidate_durations, song_duration)
-                    lyric_lines = analysis.get("lyric_lines", [])
-                else:
-                    raise RuntimeError("Audio analysis returned invalid scene timings")
-            except Exception as audio_err:
-                print(f"[generation] Audio analysis failed, using title-only storyboard: {safe_error(audio_err)}")
 
-            if storyboard is None:
-                _status("storyboard", "יוצר סטורי בורד...")
-                storyboard = get_storyboard(song_name, api_key, num_scenes=num_scenes)
+            if custom_storyboard is not None:
+                # ── User-supplied storyboard: skip Gemini's own scene/prompt
+                # generation entirely. There's no real audio-timed lyric data
+                # for a storyboard we didn't derive from analyze_song_audio,
+                # so karaoke subtitles are unavailable for this path.
+                _status("storyboard", "משתמש בסטוריבורד מותאם אישית...")
+                storyboard = custom_storyboard
                 raw_ratios = [s.get("duration_ratio", 1.0) for s in storyboard]
                 scene_durations = _reconcile_scene_durations(raw_ratios, song_duration)
+            else:
+                num_scenes = _scene_count_for_duration(song_duration)
+
+                # ── Step 1: Listen to the real audio and build a storyboard ──
+                _status("audio", "מאזין לשיר ומנתח אותו (Gemini File API)...")
+                try:
+                    analysis = analyze_song_audio(audio_path, song_name, api_key, num_scenes=num_scenes)
+                    candidate_scenes = analysis["scenes"]
+                    candidate_durations = [
+                        s.get("end", 0) - s.get("start", 0) for s in candidate_scenes
+                    ]
+                    if len(candidate_scenes) >= 2 and all(d > 0.2 for d in candidate_durations):
+                        storyboard = candidate_scenes
+                        scene_durations = _reconcile_scene_durations(candidate_durations, song_duration)
+                        lyric_lines = analysis.get("lyric_lines", [])
+                    else:
+                        raise RuntimeError("Audio analysis returned invalid scene timings")
+                except Exception as audio_err:
+                    print(f"[generation] Audio analysis failed, using title-only storyboard: {safe_error(audio_err)}")
+
+                if storyboard is None:
+                    _status("storyboard", "יוצר סטורי בורד...")
+                    storyboard = get_storyboard(song_name, api_key, num_scenes=num_scenes)
+                    raw_ratios = [s.get("duration_ratio", 1.0) for s in storyboard]
+                    scene_durations = _reconcile_scene_durations(raw_ratios, song_duration)
 
             # ── Step 2: Generate a real video clip per scene with Veo 3.1 ──
             scene_clips = []
