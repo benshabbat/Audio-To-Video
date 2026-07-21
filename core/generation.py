@@ -53,6 +53,32 @@ def _scene_count_for_duration(duration: float) -> int:
     return max(2, min(DEFAULT_NUM_SCENES, max_scenes_that_fit))
 
 
+# Floor for a single scene's own raw duration, before proportional
+# reconciliation below — guards against a hallucinated zero/negative Gemini
+# timestamp or duration_ratio for one scene.
+MIN_RAW_SCENE_SECONDS = 0.5
+
+
+def _reconcile_scene_durations(raw_durations: list, song_duration: float) -> list:
+    """
+    Clamp each scene to a small positive floor, then scale all of them
+    proportionally so they sum exactly to song_duration.
+
+    The storyboard's own timings/ratios never line up exactly with the real,
+    ffmpeg-measured song_duration. Scaling proportionally — instead of
+    dumping the entire drift onto the last scene — avoids driving any single
+    scene's duration to zero or negative (which crashes moviepy's
+    with_speed_scaled: a 0 final_duration leaves its speed factor as None,
+    a negative one produces a clip with negative duration) and avoids
+    stretching one scene to an extreme, visibly frozen/slow-motion length
+    when e.g. Gemini returns more scenes than requested and the tail gets
+    truncated.
+    """
+    clamped = [max(MIN_RAW_SCENE_SECONDS, d) for d in raw_durations]
+    scale = song_duration / sum(clamped)
+    return [d * scale for d in clamped]
+
+
 def run_generation(
     job_id: str,
     audio_path: str,
@@ -103,8 +129,7 @@ def run_generation(
                 ]
                 if len(candidate_scenes) >= 2 and all(d > 0.2 for d in candidate_durations):
                     storyboard = candidate_scenes
-                    scene_durations = candidate_durations
-                    scene_durations[-1] += song_duration - sum(scene_durations)
+                    scene_durations = _reconcile_scene_durations(candidate_durations, song_duration)
                     lyric_lines = analysis.get("lyric_lines", [])
                 else:
                     raise RuntimeError("Audio analysis returned invalid scene timings")
@@ -114,12 +139,8 @@ def run_generation(
             if storyboard is None:
                 _status("storyboard", "יוצר סטורי בורד...")
                 storyboard = get_storyboard(song_name, api_key, num_scenes=num_scenes)
-                total_ratio = sum(s.get("duration_ratio", 1.0) for s in storyboard)
-                scene_durations = [
-                    (s.get("duration_ratio", 1.0) / total_ratio) * song_duration
-                    for s in storyboard
-                ]
-                scene_durations[-1] += song_duration - sum(scene_durations)
+                raw_ratios = [s.get("duration_ratio", 1.0) for s in storyboard]
+                scene_durations = _reconcile_scene_durations(raw_ratios, song_duration)
 
             # ── Step 2: Generate a real video clip per scene with Veo 3.1 ──
             scene_clips = []
