@@ -15,9 +15,9 @@ import time
 import uuid
 import tempfile
 
-from error_utils import safe_error
+from core.error_utils import safe_error
 
-_ALLOWED_DURATIONS = (4, 6, 8)  # seconds supported by veo-3.1-generate-preview
+_ALLOWED_DURATIONS = (4, 6, 8)  # seconds supported by the veo-3.1 model family
 
 # Lite tier is ~1/3 the cost of the full model with no feature loss for this
 # app's usage (reference-image conditioning works on both). Override via env

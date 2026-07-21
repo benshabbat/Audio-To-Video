@@ -77,12 +77,25 @@ python app.py
 
 ```
 audioToVideo/
-├── app.py              # שרת Flask + תזמור ה-pipeline
-├── gemini_client.py    # ניתוח אודיו אמיתי + סטורי בורד + תמונות (Imagen 3)
-├── veo_client.py       # יצירת קליפי וידאו דרך Veo 3.1
-├── animation.py        # Ken Burns + אנימציה פרוצדורלית
-├── video_generator.py  # הרכבת הסרטון הסופי וסנכרון אודיו
-├── subtitles.py        # בניית SRT + שריפת כתוביות קריוקי עם FFmpeg
+├── app.py                     # entrypoint: יוצר את ה-app דרך web.create_app() ומריץ אותו
+├── web/
+│   ├── __init__.py            # create_app() — Flask application factory
+│   └── routes.py              # Blueprint עם 4 ה-routes (index/generate/status/download)
+├── core/
+│   ├── jobs.py                # ניהול job store + ניקוי קבצים ישנים
+│   ├── generation.py          # תזמור ה-pipeline המלא (audio → clips → assembly)
+│   └── error_utils.py
+├── ai/
+│   ├── genai_client.py        # יצירת google-genai client משותפת
+│   ├── audio_analysis.py      # ניתוח אודיו אמיתי (Gemini File API)
+│   ├── storyboard.py          # סטורי בורד כללי (fallback ללא ניתוח אודיו)
+│   ├── image_generation.py    # תמונות סצנה (Imagen 4 + Gemini fallback)
+│   └── veo_client.py          # יצירת קליפי וידאו דרך Veo 3.1
+├── media/
+│   ├── image_utils.py         # פונטים/צבעים/גרדיאנט/Ken Burns/placeholder
+│   ├── animation.py           # ChildrenAnimator — אנימציה פרוצדורלית
+│   ├── video_generator.py     # הרכבת הסרטון הסופי וסנכרון אודיו
+│   └── subtitles.py           # בניית SRT + שריפת כתוביות קריוקי עם FFmpeg
 ├── requirements.txt
 ├── .env.example
 ├── templates/
