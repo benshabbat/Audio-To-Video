@@ -4,10 +4,7 @@ or when audio_analysis.analyze_song_audio fails (uniform scene lengths,
 no real listening to the song).
 """
 
-import re
-import json
-
-from .genai_client import get_client
+from .genai_client import get_client, parse_json_block
 
 from core.error_utils import safe_error
 
@@ -100,11 +97,9 @@ Rules:
             contents=prompt,
         )
         text = response.text.strip()
-        json_match = re.search(r"\[.*\]", text, re.DOTALL)
-        if json_match:
-            scenes = json.loads(json_match.group())
-            if isinstance(scenes, list) and len(scenes) > 0:
-                return scenes[:num_scenes]
+        scenes = parse_json_block(text, "[", "]")
+        if isinstance(scenes, list) and len(scenes) > 0:
+            return scenes[:num_scenes]
 
     except Exception as exc:
         print(f"[storyboard] Storyboard error: {safe_error(exc)}")

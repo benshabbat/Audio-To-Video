@@ -27,6 +27,10 @@ def _allowed(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def _valid_job_id(job_id: str) -> bool:
+    return all(c.isalnum() or c == "-" for c in job_id)
+
+
 @main_bp.route("/")
 def index():
     return render_template("index.html")
@@ -82,7 +86,7 @@ def generate():
 
 @main_bp.route("/status/<job_id>")
 def status(job_id: str):
-    if not all(c.isalnum() or c == "-" for c in job_id):
+    if not _valid_job_id(job_id):
         return jsonify({"error": "Invalid job ID"}), 400
 
     job = jobs.get(job_id)
@@ -100,7 +104,7 @@ def status(job_id: str):
 
 @main_bp.route("/download/<job_id>")
 def download(job_id: str):
-    if not all(c.isalnum() or c == "-" for c in job_id):
+    if not _valid_job_id(job_id):
         return jsonify({"error": "Invalid job ID"}), 400
 
     job = jobs.get(job_id)

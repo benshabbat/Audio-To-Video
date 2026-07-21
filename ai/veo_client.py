@@ -16,6 +16,7 @@ import uuid
 import tempfile
 
 from core.error_utils import safe_error
+from .genai_client import get_client
 
 _ALLOWED_DURATIONS = (4, 6, 8)  # seconds supported by the veo-3.1 model family
 
@@ -23,11 +24,6 @@ _ALLOWED_DURATIONS = (4, 6, 8)  # seconds supported by the veo-3.1 model family
 # app's usage (reference-image conditioning works on both). Override via env
 # if higher fidelity is ever worth the extra cost.
 _VEO_MODEL = os.getenv("VEO_MODEL", "veo-3.1-lite-generate-preview")
-
-# Bounds each individual HTTP call (submit / poll) so a stalled connection
-# can't hang a job — and its concurrency slot — forever. This is separate
-# from `timeout`, which bounds the overall polling loop.
-_HTTP_TIMEOUT_MS = 120_000
 
 
 def _closest_allowed_duration(seconds: float) -> int:
@@ -51,13 +47,9 @@ def generate_scene_video(
     Returns the path to a downloaded temp .mp4 file. Raises RuntimeError if
     generation fails or times out.
     """
-    from google import genai
     from google.genai import types
 
-    client = genai.Client(
-        api_key=api_key,
-        http_options=types.HttpOptions(timeout=_HTTP_TIMEOUT_MS),
-    )
+    client = get_client(api_key)
     veo_duration = _closest_allowed_duration(duration_seconds)
 
     config_kwargs = {
